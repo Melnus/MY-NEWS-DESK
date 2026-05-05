@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Syndicate News Desk</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        body {
+            background-color: #050505;
+            color: #00ff41;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .news-card {
+            border: 1px solid #333;
+            background: #0a0a0a;
+            transition: all 0.3s;
+        }
+
+        .news-card:hover {
+            border-color: #00ff41;
+            box-shadow: 0 0 15px rgba(0, 255, 65, 0.2);
+        }
+
+        .tag-badge {
+            background: #00ff41;
+            color: #000;
+            font-weight: bold;
+            padding: 2px 8px;
+            font-size: 0.7rem;
+        }
+
+        .markdown-body h1,
+        .markdown-body h2 {
+            display: none;
+        }
+
+        .markdown-body hr {
+            border-color: #222;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+
+<body class="p-4 md:p-10">
+    <header class="mb-10 border-b border-gray-800 pb-5">
+        <h1 class="text-3xl font-bold tracking-tighter">
+            SYNDICATE_NEWS_DESK <span class="animate-pulse">_</span>
+        </h1>
+        <p class="text-xs text-gray-500 mt-2">
+            REAL-TIME CONTEXT BROADCAST SYSTEM // SBCM_ALLIANCE
+        </p>
+    </header>
+
+    <div id="news-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+
+    <script>
+        async function loadNews() {
+            const grid = document.getElementById('news-grid');
+
+            try {
+                // manifest の場所を統一（docsから見た相対パス）
+                const res = await fetch('./contexts/manifest.json');
+                if (!res.ok) throw new Error('manifest.json 読み込み失敗');
+
+                const projects = await res.json();
+
+                for (const tag of projects) {
+                    try {
+                        const ctxRes = await fetch(`./contexts/ctx_${tag}.md`);
+                        if (!ctxRes.ok) throw new Error(`ctx_${tag}.md 読み込み失敗`);
+
+                        const mdText = await ctxRes.text();
+
+                        const card = document.createElement('div');
+                        card.className = 'news-card p-6 rounded-sm flex flex-col justify-between';
+
+                        card.innerHTML = `
+                            <div>
+                                <div class="flex justify-between items-start mb-4">
+                                    <span class="tag-badge">${tag}</span>
+                                </div>
+                                <div class="markdown-body text-sm text-gray-300 leading-relaxed">
+                                    ${marked.parse(mdText)}
+                                </div>
+                            </div>
+                            <div class="mt-6 pt-4 border-t border-gray-900 text-[10px] text-gray-600">
+                                SOURCE: contexts/ctx_${tag}.md
+                            </div>
+                        `;
+
+                        grid.appendChild(card);
+
+                    } catch (err) {
+                        console.error(err);
+
+                        const errorCard = document.createElement('div');
+                        errorCard.className = 'news-card p-6 rounded-sm';
+
+                        errorCard.innerHTML = `
+                            <div class="text-red-500 text-sm">
+                                ERROR: ${tag} の読み込みに失敗
+                            </div>
+                        `;
+
+                        grid.appendChild(errorCard);
+                    }
+                }
+
+            } catch (err) {
+                console.error(err);
+                grid.innerHTML = `
+                    <div class="text-red-500">
+                        manifest.json の読み込みに失敗しました
+                    </div>
+                `;
+            }
+        }
+
+        // DOM読み込み後に実行（安全）
+        document.addEventListener('DOMContentLoaded', loadNews);
+    </script>
+</body>
+</html>
