@@ -2,76 +2,70 @@ import os
 import re
 import datetime
 
-# 1. 環境変数からIssueデータを取得
-title = os.getenv("ISSUE_TITLE", "No Title").strip()
+# 1. データの取得
+title_raw = os.getenv("ISSUE_TITLE", "No Title").strip()
 body = os.getenv("ISSUE_BODY", "No Body").strip()
 
-# ---------------------------------------------------------
-# Step 1: タグの自動選別とファイル名生成
-# ---------------------------------------------------------
-# タイトルの先頭にある [TAG] を探す (例: "[GAME] 新しいUI案")
-match = re.match(r"^\[([A-Za-z0-9_-]+)\]", title)
-if match:
-    tag = match.group(1).upper()
-    clean_title = title[match.end():].strip()
-else:
-    tag = "IDEAS"
-    clean_title = title
-
-# OSでファイル名に使えない記号を削除・置換して安全な名前にする
-safe_title = re.sub(r'[\\/*?:"<>|]', "", clean_title)
-safe_title = safe_title.replace(" ", "_")
-
-# タグごとに個別のフォルダを作成 (例: articles/GAME/)
-tag_dir = f"articles/{tag}"
-os.makedirs(tag_dir, exist_ok=True)
+# フォルダ作成
 os.makedirs("contexts", exist_ok=True)
 
-# ---------------------------------------------------------
-# Step 2: 記事ファイル(個別)の作成
-# ---------------------------------------------------------
-# タイムスタンプを取得 (例: 20251125_143000)
+# --- Step 1: タグ選別 ---
+match = re.match(r"^\[([A-Za-z0-9_-]+)\]", title_raw)
+tag = match.group(1).upper() if match else "IDEAS"
+clean_title = title_raw[match.end():].strip() if match else title_raw
+
+tag_dir = f"articles/{tag}"
+os.makedirs(tag_dir, exist_ok=True)
+
+# --- Step 2: 記事保存（生ログ） ---
 now_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-# 個別記事のファイル名 (例: 20251125_143000_新しいUI案.md)
-article_filename = f"{now_str}_{safe_title}.md"
+safe_file_title = re.sub(r'[\\/*?:"<>|]', '', clean_title).replace(' ', '_')
+article_filename = f"{now_str}_{safe_file_title}.md"
 article_path = os.path.join(tag_dir, article_filename)
 
-# 記事のフォーマット
-entry_block = f"# {clean_title}\n\n{body}\n"
-
 with open(article_path, "w", encoding="utf-8") as f:
-    f.write(entry_block)
+    f.write(f"# TITLE: {clean_title}\n\n{body}\n")
 
-# ---------------------------------------------------------
-# Step 3: ペライチ文脈の更新（最新の複数ファイルから2000文字抽出）
-# ---------------------------------------------------------
+# --- Step 3: 構造化スクリーニング（TADC抽出） ---
+def extract_section(section_name, text):
+    # 各セクションの内容を次のヘッダーが来るまで抜き出す正規表現
+    pattern = rf"# {section_name}\n(.*?)(?=\n#|$)"
+    res = re.search(pattern, text, re.DOTALL)
+    return res.group(1).strip() if res else ""
+
+all_files = sorted([f for f in os.listdir(tag_dir) if f.endswith(".md")], reverse=True)
+
 context_path = f"contexts/ctx_{tag}.md"
-context_text = f"# CONTEXT: {tag}\n※最新の2000文字以内のみを保持しています。\n\n"
-current_length = len(context_text)
+header = f"# 🧠 SYSTEM CONTEXT: {tag}\nGenerated: {now_str} (UTC)\n"
+header += "※過去の決定事項（Conclusion）と要旨（Abstract）の凝縮版\n\n---\n\n"
 
-# tag_dir(該当タグのフォルダ)内にある全 .md ファイルを取得し、名前で「降順（新しい順）」にソート
-all_files = [f for f in os.listdir(tag_dir) if f.endswith(".md")]
-all_files.sort(reverse=True)
+compiled_body = ""
+# 文字数制限（2000文字）に収まるまで、新しい順にABSTRACTとCONCLUSIONを拾う
+for f_name in all_files:
+    with open(os.path.join(tag_dir, f_name), "r", encoding="utf-8") as f:
+        content = f.read()
+        
+        t_match = re.search(r"# TITLE: (.*?)\n", content)
+        title = t_match.group(1) if t_match else f_name
+        abstract = extract_section("ABSTRACT", content)
+        conclusion = extract_section("CONCLUSION", content)
+        
+        if not abstract and not conclusion:
+            continue # 両方空なら無視
+            
+        entry = f"### 📄 {title}\n"
+        if abstract: entry += f"**【ABSTRACT】**\n{abstract}\n\n"
+        if conclusion: entry += f"**【CONCLUSION】**\n{conclusion}\n\n"
+        entry += "---\n\n"
+        
+        # 文字数チェック
+        if len(header) + len(compiled_body) + len(entry) < 2000:
+            compiled_body += entry
+        else:
+            break
 
-recent_blocks = []
-for file_name in all_files:
-    file_path = os.path.join(tag_dir, file_name)
-    with open(file_path, "r", encoding="utf-8") as f:
-         content = f.read().strip()
-    
-    # 今回読み込んだファイルの文字数を判定
-    if current_length + len(content) + 10 <= 2000:
-        recent_blocks.append(content)
-        current_length += len(content) + 10
-    else:
-        break # 2000文字を超えたら、それ以上古いファイルは切り捨てて読まない
-
-# 時間軸を正常（上から古い順、下に最新）に戻して結合
-recent_blocks.reverse()
-final_context = context_text + "\n\n---\n\n".join(recent_blocks) + "\n\n---\n"
-
-# 抽出したコンテキストで上書き保存
+# 書き込み
 with open(context_path, "w", encoding="utf-8") as f:
-    f.write(final_context)
+    f.write(header + compiled_body)
 
-print(f"✅ Success: Saved article '{article_filename}' and updated context for [{tag}].")
+print(f"✅ Context compiled: {tag} (TADC format)")
