@@ -30,33 +30,34 @@ jobs:
         with:
           python-version: '3.10'
 
-      # ▼ rebuild_tag を安全に決定（イベントごとの差を吸収）
+      # ▼ [修正] inputsコンテキストを使って安全かつシンプルに解決
       - name: Resolve rebuild tag
-        id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "REBUILD_TAG=${{ github.event.inputs.rebuild_tag }}" >> $GITHUB_ENV
-          else
-            echo "REBUILD_TAG=ALL" >> $GITHUB_ENV
-          fi
+          echo "REBUILD_TAG=${{ inputs.rebuild_tag || 'ALL' }}" >> "$GITHUB_ENV"
 
       - name: [Content] Run Editor Script
         env:
-          ISSUE_TITLE: ${{ github.event.issue.title || '' }}
-          ISSUE_BODY: ${{ github.event.issue.body || '' }}
-          REBUILD_TAG: ${{ env.REBUILD_TAG }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
         run: python scripts/editor.py
 
       - name: [Publish] Run Publisher Script
         run: python scripts/publisher.py
 
+      # ▼ [修正] 変更がある場合のみ安全にコミット＆プッシュを実行
       - name: Commit and Push changes
         run: |
-          git config --global user.name "Syndicate-Bot"
-          git config --global user.email "bot@example.com"
+          # 公式のGitHub Actions Botとしてコミットさせる設定
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # 変更をステージング
           git add articles/ contexts/ docs/
 
-          git commit -m "📰 Syndicate: Content Edited & Published" || echo "No changes to commit"
-
-          git push
+          # ステージングされた変更があるか確認してからコミット・プッシュ
+          if ! git diff --cached --quiet; then
+            git commit -m "📰 Syndicate: Content Edited & Published"
+            git push
+          else
+            echo "No changes to commit"
+          fi
