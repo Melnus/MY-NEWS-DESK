@@ -3,14 +3,14 @@ name: News Desk
 on:
   issues:
     types: [opened]
-  # ▼ 追加：手動で再生成コマンドを実行できるようにする
+
   workflow_dispatch:
     inputs:
       rebuild_tag:
         description: '再構築するタグ名 (ALL で全モジュール)'
-        required: true
+        required: false
         default: 'ALL'
-  # ▼ 追加：毎日0時に自動巡回（パトロール）
+
   schedule:
     - cron: '0 0 * * *'
 
@@ -20,23 +20,33 @@ permissions:
 jobs:
   syndicate:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # ▼ rebuild_tag を安全に決定（イベントごとの差を吸収）
+      - name: Resolve rebuild tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "REBUILD_TAG=${{ github.event.inputs.rebuild_tag }}" >> $GITHUB_ENV
+          else
+            echo "REBUILD_TAG=ALL" >> $GITHUB_ENV
+          fi
+
       - name: [Content] Run Editor Script
         env:
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          REBUILD_TAG: ${{ github.event.inputs.rebuild_tag }}
+          ISSUE_TITLE: ${{ github.event.issue.title || '' }}
+          ISSUE_BODY: ${{ github.event.issue.body || '' }}
+          REBUILD_TAG: ${{ env.REBUILD_TAG }}
         run: python scripts/editor.py
 
-      # ▼ 追加：配信用のPublisherを実行する
       - name: [Publish] Run Publisher Script
         run: python scripts/publisher.py
 
@@ -44,7 +54,9 @@ jobs:
         run: |
           git config --global user.name "Syndicate-Bot"
           git config --global user.email "bot@example.com"
-          # ▼ 修正：docs フォルダ（Webサイト用）も一緒に保存するようにする
+
           git add articles/ contexts/ docs/
+
           git commit -m "📰 Syndicate: Content Edited & Published" || echo "No changes to commit"
+
           git push
