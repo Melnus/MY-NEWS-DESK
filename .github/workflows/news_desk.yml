@@ -4,60 +4,31 @@ on:
   issues:
     types: [opened]
 
-  workflow_dispatch:
-    inputs:
-      rebuild_tag:
-        description: '再構築するタグ名 (ALL で全モジュール)'
-        required: false
-        default: 'ALL'
-
-  schedule:
-    - cron: '0 0 * * *'
-
 permissions:
   contents: write
 
 jobs:
-  syndicate:
+  process-issue:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      # ▼ [修正] inputsコンテキストを使って安全かつシンプルに解決
-      - name: Resolve rebuild tag
-        run: |
-          echo "REBUILD_TAG=${{ inputs.rebuild_tag || 'ALL' }}" >> "$GITHUB_ENV"
-
-      - name: [Content] Run Editor Script
+      - name: Run Editor Script
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           ISSUE_BODY: ${{ github.event.issue.body }}
         run: python scripts/editor.py
 
-      - name: [Publish] Run Publisher Script
-        run: python scripts/publisher.py
-
-      # ▼ [修正] 変更がある場合のみ安全にコミット＆プッシュを実行
       - name: Commit and Push changes
         run: |
-          # 公式のGitHub Actions Botとしてコミットさせる設定
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # 変更をステージング
-          git add articles/ contexts/ docs/
-
-          # ステージングされた変更があるか確認してからコミット・プッシュ
-          if ! git diff --cached --quiet; then
-            git commit -m "📰 Syndicate: Content Edited & Published"
-            git push
-          else
-            echo "No changes to commit"
-          fi
+          git config --global user.name "Syndicate-Bot"
+          git config --global user.email "bot@example.com"
+          git add articles/ contexts/
+          git commit -m "📰 Auto-publish: Updated articles and 2000-char context" || echo "No changes to commit"
+          git push
