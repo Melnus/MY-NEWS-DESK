@@ -1,7 +1,7 @@
 # TITLE
 [TAG] 題名
 
-# ABSTRACT 
+# ABSTRACT
 
 # DETAIL
 
