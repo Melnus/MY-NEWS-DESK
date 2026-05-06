@@ -28,8 +28,8 @@ with open(article_path, "w", encoding="utf-8") as f:
 
 # --- Step 3: 構造化スクリーニング（TADC抽出） ---
 def extract_section(section_name, text):
-    # 各セクションの内容を次のヘッダーが来るまで抜き出す正規表現
-    pattern = rf"# {section_name}\n(.*?)(?=\n#|$)"
+    # 見出し前後の見えないスペース（\s*）を許容するように修正
+    pattern = rf"#\s*{section_name}\s*\n(.*?)(?=\n#|$)"
     res = re.search(pattern, text, re.DOTALL)
     return res.group(1).strip() if res else ""
 
