@@ -21,14 +21,19 @@ os.makedirs(tag_dir, exist_ok=True)
 # --- Step 2: 今回の記事を保存（生ログ） ---
 now_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 safe_file_title = re.sub(r'[\\/*?:"<>|]', '', clean_title).replace(' ', '_')
-article_filename = f"{now_str}_{safe_file_title}.md"
+
+# 💡 ファイル名がLinuxの255バイト制限を突破しないよう、先頭40文字でカットする
+safe_file_title_short = safe_file_title[:40]
+
+# ファイル名にはカットした短い名前を使う
+article_filename = f"{now_str}_{safe_file_title_short}.md"
 article_path = os.path.join(tag_dir, article_filename)
 
 with open(article_path, "w", encoding="utf-8") as f:
+    # ファイルの「中身」には、省略されていない元の完全なタイトルを記録する
     f.write(f"# TITLE: {clean_title}\n\n{body}\n")
 
 print(f"✅ Saved new article: {article_path}")
-
 
 # --- Step 3: 【全フォルダ精査】構造化スクリーニング（全TADC一斉再構築） ---
 def extract_section(section_name, text):
